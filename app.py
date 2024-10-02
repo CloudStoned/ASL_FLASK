@@ -8,6 +8,7 @@ import base64
 from threading import Thread
 from queue import Queue
 import logging
+import traceback
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.DEBUG)
@@ -79,6 +80,7 @@ def process_frames():
             app.predicted_gesture = predicted_character
         except Exception as e:
             app.logger.error(f"Error processing frame: {str(e)}")
+            app.logger.error(traceback.format_exc())
             app.predicted_gesture = "Error in processing"
 
 processing_thread = Thread(target=process_frames)
@@ -106,7 +108,14 @@ def process_frame():
         return jsonify({'gesture': gesture})
     except Exception as e:
         app.logger.error(f"Error in process_frame: {str(e)}")
+        app.logger.error(traceback.format_exc())
         return jsonify({'gesture': 'Error occurred', 'error': str(e)}), 500
 
+@app.errorhandler(Exception)
+def handle_exception(e):
+    app.logger.error(f"Unhandled exception: {str(e)}")
+    app.logger.error(traceback.format_exc())
+    return jsonify({'gesture': 'Server error', 'error': str(e)}), 500
+
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=10000, threaded=True)
+    app.run(debug=False, host='0.0.0.0', port=10000, threaded=True)

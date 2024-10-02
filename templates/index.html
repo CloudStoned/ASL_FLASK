@@ -14,6 +14,8 @@
             background-color: #f0f0f0;
             padding: 10px;
             border-radius: 5px;
+            max-height: 200px;
+            overflow-y: auto;
         }
     </style>
 </head>
@@ -35,14 +37,20 @@
         const resultDiv = document.getElementById('result');
         const debugDiv = document.getElementById('debug');
 
+        function addDebugInfo(info) {
+            debugDiv.textContent += info + '\n';
+            debugDiv.scrollTop = debugDiv.scrollHeight;
+        }
+
         navigator.mediaDevices.getUserMedia({ video: true })
             .then(stream => {
                 video.srcObject = stream;
+                addDebugInfo("Camera accessed successfully");
             })
             .catch(err => {
                 console.error("Error accessing the camera:", err);
                 resultDiv.textContent = "Error: Unable to access the camera. Please make sure you've granted camera permissions.";
-                debugDiv.textContent += `Camera Error: ${err}\n`;
+                addDebugInfo(`Camera Error: ${err}`);
             });
 
         function processFrame() {
@@ -56,15 +64,27 @@
                 },
                 body: JSON.stringify({ frame: imageData }),
             })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
             .then(data => {
                 resultDiv.textContent = `Detected Gesture: ${data.gesture}`;
-                debugDiv.textContent += `Server Response: ${JSON.stringify(data)}\n`;
+                addDebugInfo(`Server Response: ${JSON.stringify(data)}`);
             })
             .catch(error => {
                 console.error('Error:', error);
-                resultDiv.textContent = "Error: Unable to process frame. Please try refreshing the page.";
-                debugDiv.textContent += `Fetch Error: ${error}\n`;
+                resultDiv.textContent = "Error: Unable to process frame. Please check the debug info and try refreshing the page.";
+                addDebugInfo(`Fetch Error: ${error}`);
+                // Try to get the response text for more info
+                if (error instanceof Error && error.message.includes('HTTP error')) {
+                    fetch('/process_frame', { method: 'POST', body: JSON.stringify({ frame: imageData }) })
+                        .then(response => response.text())
+                        .then(text => addDebugInfo(`Raw server response: ${text}`))
+                        .catch(e => addDebugInfo(`Unable to get raw response: ${e}`));
+                }
             });
 
             setTimeout(processFrame, 1000);
