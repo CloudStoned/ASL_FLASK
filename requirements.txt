@@ -1,0 +1,7 @@
+# Python Version 3.9.12
+
+opencv-python==4.7.0.68
+mediapipe==0.9.1.0
+scikit-learn==1.5.1
+numpy==2.0.1
+flask==3.0.3
