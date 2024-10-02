@@ -29,6 +29,7 @@ try:
         model_dict = pickle.load(model_file)
     model = model_dict['model']
     app.logger.info("Model loaded successfully")
+    
 except Exception as e:
     app.logger.error(f"Error loading model: {str(e)}")
     model = None
