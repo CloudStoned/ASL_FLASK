@@ -31,10 +31,15 @@
             border-radius: 5px;
             overflow: hidden;
         }
-        #video-feed {
+        #video {
             display: block;
             max-width: 100%;
             height: auto;
+        }
+        #result {
+            margin-top: 20px;
+            font-size: 24px;
+            font-weight: bold;
         }
     </style>
 </head>
@@ -42,8 +47,51 @@
     <div class="container">
         <h1>Hand Gesture Recognition</h1>
         <div class="video-container">
-            <img id="video-feed" src="{{ url_for('video_feed') }}" alt="Hand Gesture Recognition Feed">
+            <video id="video" width="640" height="480" autoplay></video>
+            <canvas id="canvas" width="640" height="480" style="display: none;"></canvas>
         </div>
+        <div id="result">No hand detected</div>
     </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const resultDiv = document.getElementById('result');
+
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                video.srcObject = stream;
+            })
+            .catch(err => {
+                console.error("Error accessing the camera:", err);
+                resultDiv.textContent = "Error: Unable to access the camera. Please make sure you've granted camera permissions.";
+            });
+
+        function processFrame() {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = canvas.toDataURL('image/jpeg');
+
+            fetch('/process_frame', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ frame: imageData }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                resultDiv.textContent = `Detected Gesture: ${data.gesture}`;
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                resultDiv.textContent = "Error: Unable to process frame. Please try refreshing the page.";
+            });
+
+            requestAnimationFrame(processFrame);
+        }
+
+        video.addEventListener('loadedmetadata', processFrame);
+    </script>
 </body>
 </html>
