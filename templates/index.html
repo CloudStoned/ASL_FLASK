@@ -6,6 +6,15 @@
     <title>Hand Gesture Recognition</title>
     <style>
         /* Your existing styles here */
+        #debug {
+            margin-top: 20px;
+            font-family: monospace;
+            text-align: left;
+            white-space: pre-wrap;
+            background-color: #f0f0f0;
+            padding: 10px;
+            border-radius: 5px;
+        }
     </style>
 </head>
 <body>
@@ -16,6 +25,7 @@
             <canvas id="canvas" width="640" height="480" style="display: none;"></canvas>
         </div>
         <div id="result">No hand detected</div>
+        <div id="debug"></div>
     </div>
 
     <script>
@@ -23,6 +33,7 @@
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const resultDiv = document.getElementById('result');
+        const debugDiv = document.getElementById('debug');
 
         navigator.mediaDevices.getUserMedia({ video: true })
             .then(stream => {
@@ -31,11 +42,12 @@
             .catch(err => {
                 console.error("Error accessing the camera:", err);
                 resultDiv.textContent = "Error: Unable to access the camera. Please make sure you've granted camera permissions.";
+                debugDiv.textContent += `Camera Error: ${err}\n`;
             });
 
         function processFrame() {
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const imageData = canvas.toDataURL('image/jpeg', 0.5);  // Reduce image quality
+            const imageData = canvas.toDataURL('image/jpeg', 0.5);
 
             fetch('/process_frame', {
                 method: 'POST',
@@ -47,13 +59,15 @@
             .then(response => response.json())
             .then(data => {
                 resultDiv.textContent = `Detected Gesture: ${data.gesture}`;
+                debugDiv.textContent += `Server Response: ${JSON.stringify(data)}\n`;
             })
             .catch(error => {
                 console.error('Error:', error);
                 resultDiv.textContent = "Error: Unable to process frame. Please try refreshing the page.";
+                debugDiv.textContent += `Fetch Error: ${error}\n`;
             });
 
-            setTimeout(processFrame, 1000);  // Process a frame every second
+            setTimeout(processFrame, 1000);
         }
 
         video.addEventListener('loadedmetadata', processFrame);
