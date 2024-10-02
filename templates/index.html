@@ -5,15 +5,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Hand Gesture Recognition</title>
     <style>
-        /* Your existing styles here */
-        #debug {
-            margin-top: 20px;
-            font-family: monospace;
-            text-align: left;
-            white-space: pre-wrap;
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
             background-color: #f0f0f0;
-            padding: 10px;
+        }
+        .container {
+            text-align: center;
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        .video-container {
+            margin-top: 20px;
+            border: 2px solid #ddd;
             border-radius: 5px;
+            overflow: hidden;
+        }
+        #video-feed {
+            display: block;
+            max-width: 100%;
+            height: auto;
         }
     </style>
 </head>
@@ -21,56 +42,8 @@
     <div class="container">
         <h1>Hand Gesture Recognition</h1>
         <div class="video-container">
-            <video id="video" width="640" height="480" autoplay></video>
-            <canvas id="canvas" width="640" height="480" style="display: none;"></canvas>
+            <img id="video-feed" src="{{ url_for('video_feed') }}" alt="Hand Gesture Recognition Feed">
         </div>
-        <div id="result">No hand detected</div>
-        <div id="debug"></div>
     </div>
-
-    <script>
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        const resultDiv = document.getElementById('result');
-        const debugDiv = document.getElementById('debug');
-
-        navigator.mediaDevices.getUserMedia({ video: true })
-            .then(stream => {
-                video.srcObject = stream;
-            })
-            .catch(err => {
-                console.error("Error accessing the camera:", err);
-                resultDiv.textContent = "Error: Unable to access the camera. Please make sure you've granted camera permissions.";
-                debugDiv.textContent += `Camera Error: ${err}\n`;
-            });
-
-        function processFrame() {
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const imageData = canvas.toDataURL('image/jpeg', 0.5);
-
-            fetch('/process_frame', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ frame: imageData }),
-            })
-            .then(response => response.json())
-            .then(data => {
-                resultDiv.textContent = `Detected Gesture: ${data.gesture}`;
-                debugDiv.textContent += `Server Response: ${JSON.stringify(data)}\n`;
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                resultDiv.textContent = "Error: Unable to process frame. Please try refreshing the page.";
-                debugDiv.textContent += `Fetch Error: ${error}\n`;
-            });
-
-            setTimeout(processFrame, 1000);
-        }
-
-        video.addEventListener('loadedmetadata', processFrame);
-    </script>
 </body>
 </html>
