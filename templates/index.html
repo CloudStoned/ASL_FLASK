@@ -36,14 +36,60 @@
             max-width: 100%;
             height: auto;
         }
+        #gesture {
+            font-size: 24px;
+            font-weight: bold;
+            margin-top: 20px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Hand Gesture Recognition</h1>
         <div class="video-container">
-            <img id="video-feed" src="{{ url_for('video_feed') }}" alt="Hand Gesture Recognition Feed">
+            <video id="video-feed" autoplay playsinline></video>
         </div>
+        <div id="gesture">No gesture detected</div>
     </div>
+
+    <script>
+        const video = document.getElementById('video-feed');
+        const gestureDisplay = document.getElementById('gesture');
+
+        async function setupCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+            } catch (error) {
+                console.error('Error accessing the camera:', error);
+                gestureDisplay.textContent = 'Camera access denied';
+            }
+        }
+
+        async function captureAndSendFrame() {
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            const imageData = canvas.toDataURL('image/jpeg');
+
+            try {
+                const response = await fetch('/process_frame', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ frame: imageData }),
+                });
+                const result = await response.json();
+                gestureDisplay.textContent = result.gesture;
+            } catch (error) {
+                console.error('Error processing frame:', error);
+            }
+        }
+
+        setupCamera();
+        setInterval(captureAndSendFrame, 1000); // Send a frame every second
+    </script>
 </body>
 </html>
