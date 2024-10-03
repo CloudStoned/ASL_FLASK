@@ -26,7 +26,6 @@ model_path = hf_hub_download(repo_id="cLoudstone99/ASL_RECOG", filename="model.p
 with open(model_path, 'rb') as f:
     model = pickle.load(f)
 
-# Ensure the loaded model is a RandomForestClassifier
 if not isinstance(model, RandomForestClassifier):
     print("The loaded model is not a RandomForestClassifier. Please check the model type.")
     exit(1)
