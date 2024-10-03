@@ -3,9 +3,12 @@ import cv2
 import mediapipe as mp
 import numpy as np
 import json
-from huggingface_hub import hf_hub_download
-import pickle
-from sklearn.ensemble import RandomForestClassifier
+import requests
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 app = Flask(__name__)
 
@@ -21,14 +24,9 @@ except json.JSONDecodeError:
     print("Error decoding CLASSES.json. Please ensure it's a valid JSON file.")
     exit(1)
 
-# Load the model from Hugging Face Hub
-model_path = hf_hub_download(repo_id="cLoudstone99/ASL_RECOG", filename="model.pkl")
-with open(model_path, 'rb') as f:
-    model = pickle.load(f)
-
-if not isinstance(model, RandomForestClassifier):
-    print("The loaded model is not a RandomForestClassifier. Please check the model type.")
-    exit(1)
+# Hugging Face API details
+API_URL = os.getenv('API_URL')
+headers = {"Authorization": f"Bearer {os.getenv('HUGGINGFACE_API_KEY')}"}
 
 # Set up MediaPipe
 mp_hands = mp.solutions.hands
@@ -77,8 +75,15 @@ def gen_frames():
             x2 = int(max(x_) * W) - 10
             y2 = int(max(y_) * H) - 10
 
-            prediction = model.predict([np.asarray(data_aux)])
-            predicted_character = labels_dict[int(prediction[0])]
+            # Make API call to Hugging Face
+            response = requests.post(API_URL, headers=headers, json={"inputs": data_aux})
+            result = response.json()
+            
+            if isinstance(result, list):
+                result = result[0]  # Hugging Face sometimes returns a list
+            
+            predicted_index = result.get('label')
+            predicted_character = labels_dict.get(int(predicted_index), "Unknown")
 
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 4)
             cv2.putText(frame, predicted_character, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1.3, (255, 255, 255), 3, cv2.LINE_AA)
