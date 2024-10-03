@@ -1,122 +1,100 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, Response
 import cv2
 import mediapipe as mp
 import numpy as np
 import json
+from huggingface_hub import hf_hub_download
 import pickle
-import base64
-from threading import Thread
-from queue import Queue
-import logging
-import traceback
+from sklearn.ensemble import RandomForestClassifier
 
 app = Flask(__name__)
-logging.basicConfig(level=logging.DEBUG)
 
 # Load the labels
 try:
     with open('CLASSES.json', 'r') as json_file:
         labels_dict = json.load(json_file)
     labels_dict = {int(k): v for k, v in labels_dict.items()}
-    app.logger.info(f"Labels loaded: {labels_dict}")
-except Exception as e:
-    app.logger.error(f"Error loading labels: {str(e)}")
-    labels_dict = {}
+except FileNotFoundError:
+    print("CLASSES.json file not found. Please ensure it's in the correct directory.")
+    exit(1)
+except json.JSONDecodeError:
+    print("Error decoding CLASSES.json. Please ensure it's a valid JSON file.")
+    exit(1)
 
-# Load the model
-try:
-    with open('model.p', 'rb') as model_file:
-        model_dict = pickle.load(model_file)
-    model = model_dict['model']
-    app.logger.info("Model loaded successfully")
-    
-except Exception as e:
-    app.logger.error(f"Error loading model: {str(e)}")
-    model = None
+# Load the model from Hugging Face Hub
+model_path = hf_hub_download(repo_id="cLoudstone99/ASL_RECOG", filename="model.pkl")
+with open(model_path, 'rb') as f:
+    model = pickle.load(f)
+
+if not isinstance(model, RandomForestClassifier):
+    print("The loaded model is not a RandomForestClassifier. Please check the model type.")
+    exit(1)
 
 # Set up MediaPipe
 mp_hands = mp.solutions.hands
+mp_drawing = mp.solutions.drawing_utils
+mp_drawing_styles = mp.solutions.drawing_styles
 hands = mp_hands.Hands(static_image_mode=True, min_detection_confidence=0.3)
 
-frame_queue = Queue(maxsize=1)
-
-def process_frames():
+def gen_frames():
+    cap = cv2.VideoCapture(0)
     while True:
-        frame = frame_queue.get()
-        if frame is None:
-            continue
+        data_aux = []
+        x_ = []
+        y_ = []
 
-        try:
-            data_aux = []
-            x_ = []
-            y_ = []
+        ret, frame = cap.read()
+        if not ret:
+            break
+        
+        H, W, _ = frame.shape
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = hands.process(frame_rgb)
 
-            H, W, _ = frame.shape
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            results = hands.process(frame_rgb)
+        if results.multi_hand_landmarks:
+            hand_landmarks = results.multi_hand_landmarks[0]
+            mp_drawing.draw_landmarks(
+                frame,
+                hand_landmarks,
+                mp_hands.HAND_CONNECTIONS,
+                mp_drawing_styles.get_default_hand_landmarks_style(),
+                mp_drawing_styles.get_default_hand_connections_style())
 
-            predicted_character = "No hand detected"
+            for i in range(len(hand_landmarks.landmark)):
+                x = hand_landmarks.landmark[i].x
+                y = hand_landmarks.landmark[i].y
+                x_.append(x)
+                y_.append(y)
 
-            if results.multi_hand_landmarks:
-                hand_landmarks = results.multi_hand_landmarks[0]
+            for i in range(len(hand_landmarks.landmark)):
+                x = hand_landmarks.landmark[i].x
+                y = hand_landmarks.landmark[i].y
+                data_aux.append(x - min(x_))
+                data_aux.append(y - min(y_))
 
-                for i in range(len(hand_landmarks.landmark)):
-                    x = hand_landmarks.landmark[i].x
-                    y = hand_landmarks.landmark[i].y
-                    x_.append(x)
-                    y_.append(y)
+            x1 = int(min(x_) * W) - 10
+            y1 = int(min(y_) * H) - 10
+            x2 = int(max(x_) * W) - 10
+            y2 = int(max(y_) * H) - 10
 
-                for i in range(len(hand_landmarks.landmark)):
-                    x = hand_landmarks.landmark[i].x
-                    y = hand_landmarks.landmark[i].y
-                    data_aux.append(x - min(x_))
-                    data_aux.append(y - min(y_))
+            prediction = model.predict([np.asarray(data_aux)])
+            predicted_character = labels_dict[int(prediction[0])]
 
-                prediction = model.predict([np.asarray(data_aux)])
-                predicted_character = labels_dict.get(int(prediction[0]), "Unknown")
-                app.logger.info(f"Predicted character: {predicted_character}")
-            else:
-                app.logger.info("No hand detected in the frame")
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 4)
+            cv2.putText(frame, predicted_character, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 1.3, (255, 255, 255), 3, cv2.LINE_AA)
 
-            app.predicted_gesture = predicted_character
-        except Exception as e:
-            app.logger.error(f"Error processing frame: {str(e)}")
-            app.logger.error(traceback.format_exc())
-            app.predicted_gesture = "Error in processing"
-
-processing_thread = Thread(target=process_frames)
-processing_thread.daemon = True
-processing_thread.start()
+        ret, buffer = cv2.imencode('.jpg', frame)
+        frame = buffer.tobytes()
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
-@app.route('/process_frame', methods=['POST'])
-def process_frame():
-    try:
-        frame_data = request.json['frame']
-        frame_bytes = base64.b64decode(frame_data.split(',')[1])
-        nparr = np.frombuffer(frame_bytes, np.uint8)
-        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-
-        if frame_queue.full():
-            frame_queue.get()
-        frame_queue.put(frame)
-
-        gesture = getattr(app, 'predicted_gesture', 'Processing...')
-        app.logger.info(f"Returning gesture: {gesture}")
-        return jsonify({'gesture': gesture})
-    except Exception as e:
-        app.logger.error(f"Error in process_frame: {str(e)}")
-        app.logger.error(traceback.format_exc())
-        return jsonify({'gesture': 'Error occurred', 'error': str(e)}), 500
-
-@app.errorhandler(Exception)
-def handle_exception(e):
-    app.logger.error(f"Unhandled exception: {str(e)}")
-    app.logger.error(traceback.format_exc())
-    return jsonify({'gesture': 'Server error', 'error': str(e)}), 500
+@app.route('/video_feed')
+def video_feed():
+    return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0', port=10000, threaded=True)
+    app.run(debug=True)
